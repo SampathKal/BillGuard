@@ -6,7 +6,7 @@ import {
   RefreshCw, Mail, Phone, Sparkles, Shield
 } from 'lucide-react'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────
 
 type Screen = 'upload' | 'scanning' | 'results' | 'letter' | 'send'
 
@@ -30,7 +30,7 @@ interface AnalysisResult {
   insuranceInfo: string
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 const severityConfig = {
   high: {
@@ -56,7 +56,7 @@ const severityConfig = {
   },
 }
 
-// ─── API Call ────────────────────────────────────────────────────────────────
+// ─── API Call ──────────────────────────────────────────────────────────
 
 async function analyzeBill(base64Image: string, mediaType: string): Promise<AnalysisResult> {
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
@@ -117,7 +117,23 @@ If you cannot clearly read the bill or it's not a medical bill, still return val
   const clean = text.replace(/```json|```/g, "").trim();
   return JSON.parse(clean);
 }
+<<<<<<< HEAD
 async function generateDisputeLetter(analysis: AnalysisResult, base64Image: string, mediaType: string): Promise<string> {
+=======
+
+async function generateDisputeLetter(
+  analysis: AnalysisResult,
+  base64Image: string,
+  mediaType: string
+): Promise<string> {
+  const { GoogleGenerativeAI } = await import("@google/generative-ai");
+  const client = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+
+  const model = client.getGenerativeModel({
+    model: "gemini-2.0-flash",
+  });
+
+>>>>>>> 26a1168307d652407a549adf6bd3ad066390d42b
   const systemPrompt = `You are a healthcare attorney and patient advocate. Generate a professional, legally precise medical billing dispute letter based on the analysis provided.
 
 The letter must:
@@ -130,30 +146,24 @@ The letter must:
 - Include language about escalation to state insurance commissioner and CMS if unresolved
 - Be firm but professional — the tone of a letter that gets results
 
-Return ONLY the letter text, ready to copy and send. Start with the date line. No JSON, no preamble.`
+Return ONLY the letter text, ready to copy and send. Start with the date line. No JSON, no preamble.`;
 
-  const errorsText = analysis.errors.map(e =>
-    `- ${e.type} (${e.severity} priority): ${e.description} | Legal basis: ${e.legalBasis} | Estimated savings: ${e.estimatedSavings}`
-  ).join('\n')
+  const errorsText = analysis.errors
+    .map(
+      (e) =>
+        `- ${e.type} (${e.severity} priority): ${e.description} | Legal basis: ${e.legalBasis} | Estimated savings: ${e.estimatedSavings}`
+    )
+    .join("\n");
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: base64Image },
-            },
-            {
-              type: 'text',
-              text: `Generate a dispute letter for this medical bill.
+  const response = await model.generateContent([
+    {
+      inlineData: {
+        data: base64Image,
+        mimeType: mediaType,
+      },
+    },
+    {
+      text: `Generate a dispute letter for this medical bill.
 
 Patient: ${analysis.patientName}
 Provider: ${analysis.provider}
@@ -164,18 +174,13 @@ Estimated Recovery: ${analysis.estimatedRecovery}
 
 Errors Found:
 ${errorsText}`,
-            },
-          ],
-        },
-      ],
-    }),
-  })
+    },
+  ]);
 
-  const data = await response.json()
-  return data.content?.find((b: { type: string }) => b.type === 'text')?.text || ''
+  return response.response.text();
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────
 
 function UploadScreen({ onImageSelected }: { onImageSelected: (b64: string, type: string, preview: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -669,7 +674,7 @@ function SendScreen({
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────
 
 export default function BillScanner() {
   const [screen, setScreen] = useState<Screen>('upload')

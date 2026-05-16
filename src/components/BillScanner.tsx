@@ -59,14 +59,22 @@ const severityConfig = {
 // ─── API Call ──────────────────────────────────────────────────────────
 
 async function analyzeBill(base64Image: string, mediaType: string): Promise<AnalysisResult> {
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const client = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+  try {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+    
+    if (!apiKey) {
+      throw new Error('Gemini API key not found. Please check your .env.local file.')
+    }
 
-  const model = client.getGenerativeModel({
-    model: "gemini-2.0-flash",
-  });
-
-  const systemPrompt = `You are BillGuard, an expert medical billing analyst and patient advocate with 20+ years of experience identifying billing errors, fraud, and overcharges in US medical bills.
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `You are BillGuard, an expert medical billing analyst and patient advocate with 20+ years of experience identifying billing errors, fraud, and overcharges in US medical bills.
 
 You analyze medical bills, Explanation of Benefits (EOB), and insurance denial letters to find:
 - Duplicate charges (same service billed multiple times)
@@ -99,42 +107,69 @@ Respond ONLY with a valid JSON object — no markdown, no preamble. Use this exa
   ]
 }
 
-If you cannot clearly read the bill or it's not a medical bill, still return valid JSON with errors array containing one entry explaining what you could see. Be specific and cite real laws (ERISA, ACA, HIPAA, False Claims Act, etc).`;
+Analyze this medical bill image for errors, overcharges, and illegal practices. Return only the JSON object.`
+              },
+              {
+                inlineData: {
+                  mimeType: mediaType,
+                  data: base64Image
+                }
+              }
+            ]
+          }
+        ]
+      })
+    })
 
-  const response = await model.generateContent([
-    {
-      inlineData: {
-        data: base64Image,
-        mimeType: mediaType,
-      },
-    },
-    {
-      text: "Analyze this medical bill for errors, overcharges, and illegal practices. Return only the JSON object.",
-    },
-  ]);
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('Gemini API error:', errorData)
+      throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`)
+    }
 
-  const text = response.response.text();
-  const clean = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(clean);
+    const data = await response.json()
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    
+    if (!text) {
+      throw new Error('No response from Gemini API')
+    }
+
+    const clean = text.replace(/```json|```/g, '').trim()
+    return JSON.parse(clean)
+  } catch (error) {
+    console.error('Bill analysis error:', error)
+    throw error
+  }
 }
-<<<<<<< HEAD
-async function generateDisputeLetter(analysis: AnalysisResult, base64Image: string, mediaType: string): Promise<string> {
-=======
 
 async function generateDisputeLetter(
   analysis: AnalysisResult,
   base64Image: string,
   mediaType: string
 ): Promise<string> {
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const client = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+  try {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+    
+    if (!apiKey) {
+      throw new Error('Gemini API key not found. Please check your .env.local file.')
+    }
 
-  const model = client.getGenerativeModel({
-    model: "gemini-2.0-flash",
-  });
+    const errorsText = analysis.errors
+      .map(
+        (e) =>
+          `- ${e.type} (${e.severity} priority): ${e.description} | Legal basis: ${e.legalBasis} | Estimated savings: ${e.estimatedSavings}`
+      )
+      .join("\n")
 
->>>>>>> 26a1168307d652407a549adf6bd3ad066390d42b
-  const systemPrompt = `You are a healthcare attorney and patient advocate. Generate a professional, legally precise medical billing dispute letter based on the analysis provided.
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `You are a healthcare attorney and patient advocate. Generate a professional, legally precise medical billing dispute letter based on the analysis provided.
 
 The letter must:
 - Be formally addressed to both the hospital billing department and insurance company
@@ -146,24 +181,7 @@ The letter must:
 - Include language about escalation to state insurance commissioner and CMS if unresolved
 - Be firm but professional — the tone of a letter that gets results
 
-Return ONLY the letter text, ready to copy and send. Start with the date line. No JSON, no preamble.`;
-
-  const errorsText = analysis.errors
-    .map(
-      (e) =>
-        `- ${e.type} (${e.severity} priority): ${e.description} | Legal basis: ${e.legalBasis} | Estimated savings: ${e.estimatedSavings}`
-    )
-    .join("\n");
-
-  const response = await model.generateContent([
-    {
-      inlineData: {
-        data: base64Image,
-        mimeType: mediaType,
-      },
-    },
-    {
-      text: `Generate a dispute letter for this medical bill.
+Return ONLY the letter text, ready to copy and send. Start with the date line. No JSON, no preamble.
 
 Patient: ${analysis.patientName}
 Provider: ${analysis.provider}
@@ -173,11 +191,34 @@ Total Charged: ${analysis.totalCharged}
 Estimated Recovery: ${analysis.estimatedRecovery}
 
 Errors Found:
-${errorsText}`,
-    },
-  ]);
+${errorsText}
 
-  return response.response.text();
+Generate the dispute letter now:`
+              },
+              {
+                inlineData: {
+                  mimeType: mediaType,
+                  data: base64Image
+                }
+              }
+            ]
+          }
+        ]
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('Gemini API error:', errorData)
+      throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`)
+    }
+
+    const data = await response.json()
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  } catch (error) {
+    console.error('Letter generation error:', error)
+    throw error
+  }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────
@@ -698,7 +739,7 @@ export default function BillScanner() {
       setScreen('results')
     } catch (e) {
       console.error(e)
-      setError('Failed to analyze bill. Please try again.')
+      setError(`Failed to analyze bill: ${e instanceof Error ? e.message : 'Unknown error'}`)
       setScreen('upload')
     }
   }
@@ -712,7 +753,7 @@ export default function BillScanner() {
       setScreen('letter')
     } catch (e) {
       console.error(e)
-      setError('Failed to generate letter. Please try again.')
+      setError(`Failed to generate letter: ${e instanceof Error ? e.message : 'Unknown error'}`)
       setScreen('results')
     }
   }
@@ -729,7 +770,7 @@ export default function BillScanner() {
   return (
     <div id="scan" className="bg-black min-h-screen border-t border-white/5">
       {error && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-500/10 border border-red-500/20 rounded-xl px-5 py-3 text-red-400 text-sm">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-500/10 border border-red-500/20 rounded-xl px-5 py-3 text-red-400 text-sm max-w-md">
           {error}
         </div>
       )}
